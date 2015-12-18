@@ -296,6 +296,65 @@ class TrivialBookmarksMerger: BookmarksMerger {
         // only the Places root. (Special care must be taken to not deduce that one side has
         // deleted a root, of course, as would be the case of a Sync server that doesn't contain
         // a Mobile Bookmarks folder -- the set of roots can only grow, not shrink.)
+        //
+        // We have to handle an arbitrary combination of the following structural operations:
+        //
+        // * Creating a folder.
+        //   Created folders might now hold existing items, new items, or nothing at all.
+        // * Creating a bookmark.
+        //   It might be in a new folder or an existing folder.
+        // * Moving one or more leaf records to an existing or new folder.
+        // * Reordering the children of a folder.
+        // * Deleting an entire subtree.
+        // * Deleting an entire subtree apart from some moved nodes.
+        // * Deleting a leaf node.
+        // * Transplanting a subtree: moving a folder but not changing its children.
+        //
+        // And, of course, the non-structural operations such as renaming or changing URLs.
+        //
+        // We ignore all changes to roots themselves.
+        //
+        // Steps:
+        // * Construct a slender tree for local, mirror, and buffer, such that each tree includes
+        //   all changes and reaches the same root. In some cases the same root will be the places root.
+        //   The more thorough this step, the more confidence we have in consistency.
+        //   We end up with three trees: the mirror, (buffer + mirror), (local + mirror).
+        //   The latter two's nodes refer to the mirror if possible.
+        // * Fetch all local and remote deletions. These won't be included in the trees (for obvious
+        //   reasons); we hold on to them explicitly so we can spot the difference between a move
+        //   and a deletion.
+        // * If every GUID on each side is present in the mirror, we have no new records.
+        // * If a non-root GUID is present on both sides but not in the mirror, then either
+        //   we're re-syncing from scratch, or (unlikely) we have a random collision.
+        // * Otherwise, we have a GUID that we don't recognize. We will structure+content reconcile
+        //   this later -- we first make sure we have handled any tree moves, so that the addition
+        //   of a bookmark to a moved folder on A, and the addition of the same bookmark to the non-
+        //   moved version of the folder, will collide successfully.
+        //
+        // * Walk both of the new trees, top-down. At each point if there are two back-pointers to
+        //   the mirror node for a GUID, we have a potential conflict, and we have all three
+        //   parts that we need to resolve it via a content-based or structure-based 3WM.
+
+        // When we look at a child list:
+        // * It's the same. Great! Keep walking down.
+        // * There are added GUIDs.
+        //   * An added GUID might be a move from elsewhere. Coordinate with the removal step.
+        //   * An added GUID might be a brand new record. If there are local additions too,
+        //     check to see if they value-reconcile, and keep the remote GUID.
+        // * There are removed GUIDs.
+        //   * A removed GUID might have been deleted. Deletions win.
+        //   * A missing GUID might be a move -- removed from here and added to another folder.
+        //     Process this as a move.
+        // * The order has changed.
+
+        // When we get to a subtree that contains no changes, we can never hit conflicts, and
+        // application becomes easier.
+        // When we run out of subtrees on both sides, we're done.
+        //
+        // Match, no conflict? Apply.
+        // Match, conflict? Resolve. Might involve moves from other matches!
+        // No match in the mirror? Check for content match with the same parent, any position.
+        // Still no match? Add.
 
         // TODO
         return deferMaybe(BookmarksMergeResult.NoOp)
