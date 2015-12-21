@@ -75,10 +75,16 @@ class LoginListViewController: UIViewController {
 
         KeyboardHelper.defaultHelper.addDelegate(self)
 
-        profile.logins.getAllLogins().uponQueue(dispatch_get_main_queue()) { result in
-            self.loginDataSource.cursor = result.successValue
-            self.tableView.reloadData()
+        profile.logins.getAllLogins() >>== { logins in
+            self.loginDataSource.cursor = logins
+            let sites = logins.flatMap { $0?.hostname }
+            self.profile.favicons.
         }
+
+//        profile.logins.getAllLogins().uponQueue(dispatch_get_main_queue()) { result in
+//            self.loginDataSource.cursor = result.successValue
+//            self.tableView.reloadData()
+//        }
     }
 }
 
@@ -168,6 +174,7 @@ private class LoginCursorDataSource: NSObject, UITableViewDataSource {
         let login = loginsForSection(indexPath.section, inTableView: tableView)[indexPath.row]
         cell.style = .IconAndBothLabels
         cell.updateCellWithLogin(login)
+
         return cell
     }
 
@@ -223,4 +230,22 @@ private class LoginCursorDataSource: NSObject, UITableViewDataSource {
             }
         }
     }
+}
+
+func setFaviconImageWithURL(url: NSURL, forCell cell: LoginTableViewCell) {
+    cell.iconImageView.sd_setImageWithURL(url)
+}
+
+func bestFitFaviconURLForSite(site: NSURL, profile: Profile) -> Deferred<NSURL?> {
+    let deferred = Deferred<NSURL?>()
+    FaviconFetcher.getForURL(site, profile: profile).uponQueue(dispatch_get_main_queue()) { result in
+        guard let favicons = result.successValue where favicons.count > 0,
+              let url = favicons.first?.url.asURL else {
+            deferred.fill(nil)
+            return
+        }
+
+        deferred.fill(url)
+    }
+    return deferred
 }

@@ -48,7 +48,7 @@ class LoginTableViewCell: UITableViewCell {
         return label
     }()
 
-    private let iconImageView: UIImageView = {
+    let iconImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.backgroundColor = UIColor.whiteColor()
         imageView.contentMode = .ScaleAspectFit
