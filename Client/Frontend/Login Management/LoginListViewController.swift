@@ -40,6 +40,9 @@ class LoginListViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        let notificationCenter = NSNotificationCenter.defaultCenter()
+        notificationCenter.addObserver(self, selector: Selector("SELonProfileDidFinishSyncing"), name: NotificationProfileDidFinishSyncing, object: nil)
+
         automaticallyAdjustsScrollViewInsets = false
         self.view.backgroundColor = UIColor.whiteColor()
 
@@ -77,6 +80,22 @@ class LoginListViewController: UIViewController {
 
         KeyboardHelper.defaultHelper.addDelegate(self)
 
+        profile.logins.getAllLogins().uponQueue(dispatch_get_main_queue()) { result in
+            self.loginDataSource.cursor = result.successValue
+            self.tableView.reloadData()
+        }
+    }
+
+    deinit {
+        let notificationCenter = NSNotificationCenter.defaultCenter()
+        notificationCenter.removeObserver(self, name: NotificationProfileDidFinishSyncing, object: nil)
+    }
+}
+
+// MARK: - Selectors
+extension LoginListViewController {
+
+    func SELonProfileDidFinishSyncing() {
         profile.logins.getAllLogins().uponQueue(dispatch_get_main_queue()) { result in
             self.loginDataSource.cursor = result.successValue
             self.tableView.reloadData()

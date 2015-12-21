@@ -132,6 +132,9 @@ class LoginTableViewCell: UITableViewCell {
         super.prepareForReuse()
         enabledActions = []
         delegate = nil
+        descriptionLabel.secureTextEntry = false
+        descriptionLabel.keyboardType = .Default
+        descriptionLabel.userInteractionEnabled = false
     }
 
     private func configureLayoutForStyle(style: LoginTableViewCellStyle) {
