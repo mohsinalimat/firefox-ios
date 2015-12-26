@@ -6,6 +6,8 @@ import Foundation
 import UIKit
 import Shared
 
+private let log = Logger.syncLogger
+
 public protocol SearchableBookmarks {
     func bookmarksByURL(url: NSURL) -> Deferred<Maybe<Cursor<BookmarkItem>>>
 }
@@ -269,3 +271,130 @@ public struct BookmarkMirrorItem {
             children: nil)
     }
 }
+
+// MARK: - Defining a tree structure for syncability.
+
+enum OverlayDirection {
+    case BufferOnMirror
+    case LocalOnMirror
+}
+
+protocol StructureNode {
+    var guid: GUID { get }
+    var overrides: StructureNode? { get }
+    var deleted: Bool { get }
+}
+
+protocol FolderNode {
+    var children: [StructureNode] { get }
+}
+
+// We use a class here for two reasons: firstly, structs are limited (e.g.,
+// recursive definitions require protocols); secondly, we want guaranteed
+// duplicate references for shared overrides.
+class RecordNode: StructureNode {
+    let guid: GUID
+    let overrides: StructureNode?     // Might not be of the same type!
+    let deleted: Bool
+
+    init(guid: GUID, overrides: StructureNode?, deleted: Bool) {
+        self.guid = guid
+        self.overrides = overrides
+        self.deleted = deleted
+    }
+}
+
+class BookmarkFolderNode: RecordNode, FolderNode {
+    let children: [StructureNode]
+
+    init(guid: GUID, overrides: StructureNode?, deleted: Bool, children: [StructureNode]) {
+
+        // TODO: if this happens in the wild, we ought to figure out what to do.
+        precondition(!(BookmarkRoots.All.contains(guid) && deleted), "Roots should never be deleted.")
+        precondition(!((BookmarkRoots.RootGUID == guid) && children.isEmpty), "The Places root should never be empty.")
+
+        self.children = children
+        super.init(guid: guid, overrides: overrides, deleted: deleted)
+    }
+}
+
+protocol StructureRow {
+    var parent: GUID { get }
+    var child: GUID { get }
+    var idx: Int { get }
+    var is_overridden: Bool { get }
+}
+
+
+// Turn a complete sequence of structure rows into a tree and a lookup table.
+// Preconditions:
+// * The sequence must be grouped by parent and sorted by index.
+// * The input is not circular. Particular care should be taken with the Places root.
+// * Additional empty folders don't overlap with the parents in the provided rows.
+func treeify<S: SequenceType where S.Generator.Element: StructureRow>(rows: S, plusEmptyFolders: [GUID], overriding: BookmarkTree?) -> [BookmarkTree]? {
+    // We make the simplifying assumption that `idx` is always correct. This is valid:
+    // we assign it upon insertion, and modify only on removal, and never trust outside
+    // sources.
+    // We also assume that two records with the same GUID can't be represented, and
+    // that we won't attempt to do so by inserting junk into the DB.
+    let byParent = rows.groupBy { $0.parent }
+    let parentToChildren = mapValues(byParent) { $0.map { $0.child } }
+
+    // We construct a tree, and in so doing we find the top by tracking GUIDs that we've
+    // never seen in a child list. The ones left after processing the entirety of
+    // parentToChildren are unrooted.
+    var tops = Set<GUID>(parentToChildren.keys)
+    parentToChildren.values.forEach { guids in
+        tops.subtractInPlace(guids)
+    }
+
+    if tops.isEmpty {
+        log.warning("No top nodes.")
+        return []
+    }
+
+    var nodes: [GUID: StructureNode] = [:]
+
+    func childrenForGUID(guid: GUID) -> [GUID]? {
+        if let children = parentToChildren[guid] {
+            return children
+        }
+        if plusEmptyFolders.contains(guid) {
+            return []
+        }
+        return nil
+    }
+
+    func nodify(guid: GUID) -> StructureNode {
+        guard let children = childrenForGUID(guid) else {
+            log.debug("No children for GUID \(guid).")
+            return RecordNode(guid: guid, overrides: overriding?.lookup[guid], deleted: false)
+        }
+
+        return BookmarkFolderNode(guid: guid, overrides: overriding?.lookup[guid], deleted: false, children: children.map(node))
+    }
+
+    func node(guid: GUID) -> StructureNode {
+        if let n = nodes[guid] {
+            return n
+        }
+
+        let n = nodify(guid)
+        nodes[guid] = n
+        return n
+    }
+
+    let topNodes = tops.flatMap { node($0) as? BookmarkFolderNode }
+    return topNodes.map { BookmarkTree(lookup: nodes, root: $0) }
+}
+
+struct BookmarkTree {
+    let lookup: [GUID: StructureNode]
+    let root: BookmarkFolderNode
+}
+
+/*
+    public lazy var isBookmarkRoot: Bool = {
+        return BookmarkRoots.All.contains(self.root.guid)
+    }()
+*/
