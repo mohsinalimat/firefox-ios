@@ -98,6 +98,22 @@ public func chunk<T>(arr: [T], by: Int) -> [ArraySlice<T>] {
     }
 }
 
+public extension SequenceType {
+    // [T] -> (T -> K) -> [K: [T]]
+    // As opposed to `groupWith` (to follow Haskell's naming), which would be
+    // [T] -> (T -> K) -> [[T]]
+    func groupBy<Key>(selector: Self.Generator.Element -> Key) -> [Key: [Self.Generator.Element]] {
+        var acc: [Key: [Self.Generator.Element]] = [:]
+        for x in self {
+            let k = selector(x)
+            var a = acc[k] ?? []
+            a.append(x)
+            acc[k] = a
+        }
+        return acc
+    }
+}
+
 public func optDictionaryEqual<K: Equatable, V: Equatable>(lhs: [K: V]?, rhs: [K: V]?) -> Bool {
     switch (lhs, rhs) {
     case (.None, .None):
