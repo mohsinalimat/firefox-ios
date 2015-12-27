@@ -376,10 +376,10 @@ class TrivialBookmarksMerger: BookmarksMerger {
                     return self.applyLocalDirectlyToMirror()
                 case (false, true):
                     // No outgoing changes. Unilaterally apply remote changes if they're consistent.
-                    return self.applyIncomingDirectlyToMirror()
+                    return self.buffer.validate() >>> self.applyIncomingDirectlyToMirror
                 default:
                     // Changes on both sides. Merge.
-                    return self.threeWayMerge()
+                    return self.buffer.validate() >>> self.threeWayMerge
                 }
             }
         }

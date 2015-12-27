@@ -19,6 +19,7 @@ public protocol BookmarkBufferStorage {
     func isEmpty() -> Deferred<Maybe<Bool>>
     func applyRecords(records: [BookmarkMirrorItem]) -> Success
     func doneApplyingRecordsAfterDownload() -> Success
+    func validate() -> Success
 }
 
 public struct BookmarkRoots {
