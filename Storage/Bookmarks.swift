@@ -15,13 +15,16 @@ public protocol SearchableBookmarks {
 public protocol SyncableBookmarks: ResettableSyncStorage, AccountRemovalDelegate {
     // TODO
     func isUnchanged() -> Deferred<Maybe<Bool>>
+    func getLocalDeletions() -> Deferred<Maybe<[(GUID, Timestamp)]>>
 }
 
 public protocol BookmarkBufferStorage {
     func isEmpty() -> Deferred<Maybe<Bool>>
     func applyRecords(records: [BookmarkMirrorItem]) -> Success
     func doneApplyingRecordsAfterDownload() -> Success
+
     func validate() -> Success
+    func getBufferedDeletions() -> Deferred<Maybe<[(GUID, Timestamp)]>>
 }
 
 public struct BookmarkRoots {

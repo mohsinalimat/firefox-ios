@@ -482,6 +482,10 @@ extension MergedSQLiteBookmarks: BookmarkBufferStorage {
     public func validate() -> Success {
         return self.buffer.validate()
     }
+
+    public func getBufferedDeletions() -> Deferred<Maybe<[(GUID, Timestamp)]>> {
+        return self.buffer.getBufferedDeletions()
+    }
 }
 
 extension MergedSQLiteBookmarks: ShareToDestination {
@@ -536,6 +540,15 @@ extension SQLiteBookmarks {
     public func isUnchanged() -> Deferred<Maybe<Bool>> {
         return self.db.queryReturnsNoResults("SELECT 1 FROM \(TableBookmarksLocal)")
     }
+
+    public func getLocalDeletions() -> Deferred<Maybe<[(GUID, Timestamp)]>> {
+        let sql =
+        "SELECT guid, local_modified FROM \(TableBookmarksLocal) " +
+        "WHERE is_deleted = 1"
+
+        return self.db.runQuery(sql, args: nil, factory: { ($0["guid"] as! GUID, $0.getTimestamp("local_modified")!) })
+          >>== { deferMaybe($0.asArray()) }
+    }
 }
 
 private struct SimpleStructureRow: StructureRow {
@@ -555,6 +568,10 @@ private protocol StructureRow {
 extension MergedSQLiteBookmarks: SyncableBookmarks {
     public func isUnchanged() -> Deferred<Maybe<Bool>> {
         return self.local.isUnchanged()
+    }
+
+    public func getLocalDeletions() -> Deferred<Maybe<[(GUID, Timestamp)]>> {
+        return self.local.getLocalDeletions()
     }
 }
 
@@ -597,5 +614,14 @@ extension SQLiteBookmarkBufferStorage {
         ].map { (query, message) in
             return self.db.queryReturnsNoResults(query) >>== yup(message)
         }.allSucceed()
+    }
+
+    public func getBufferedDeletions() -> Deferred<Maybe<[(GUID, Timestamp)]>> {
+        let sql =
+        "SELECT guid, server_modified FROM \(TableBookmarksBuffer) " +
+        "WHERE is_deleted = 1"
+
+        return self.db.runQuery(sql, args: nil, factory: { ($0["guid"] as! GUID, $0.getTimestamp("server_modified")!) })
+          >>== { deferMaybe($0.asArray()) }
     }
 }
