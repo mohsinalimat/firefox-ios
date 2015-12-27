@@ -318,77 +318,7 @@ class BookmarkFolderNode: RecordNode, FolderNode {
     }
 }
 
-protocol StructureRow {
-    var parent: GUID { get }
-    var child: GUID { get }
-    var idx: Int { get }
-    var is_overridden: Bool { get }
-}
-
-
-// Turn a complete sequence of structure rows into a tree and a lookup table.
-// Preconditions:
-// * The sequence must be grouped by parent and sorted by index.
-// * The input is not circular. Particular care should be taken with the Places root.
-// * Additional empty folders don't overlap with the parents in the provided rows.
-func treeify<S: SequenceType where S.Generator.Element: StructureRow>(rows: S, plusEmptyFolders: [GUID], overriding: BookmarkTree?) -> [BookmarkTree]? {
-    // We make the simplifying assumption that `idx` is always correct. This is valid:
-    // we assign it upon insertion, and modify only on removal, and never trust outside
-    // sources.
-    // We also assume that two records with the same GUID can't be represented, and
-    // that we won't attempt to do so by inserting junk into the DB.
-    let byParent = rows.groupBy { $0.parent }
-    let parentToChildren = mapValues(byParent) { $0.map { $0.child } }
-
-    // We construct a tree, and in so doing we find the top by tracking GUIDs that we've
-    // never seen in a child list. The ones left after processing the entirety of
-    // parentToChildren are unrooted.
-    var tops = Set<GUID>(parentToChildren.keys)
-    parentToChildren.values.forEach { guids in
-        tops.subtractInPlace(guids)
-    }
-
-    if tops.isEmpty {
-        log.warning("No top nodes.")
-        return []
-    }
-
-    var nodes: [GUID: StructureNode] = [:]
-
-    func childrenForGUID(guid: GUID) -> [GUID]? {
-        if let children = parentToChildren[guid] {
-            return children
-        }
-        if plusEmptyFolders.contains(guid) {
-            return []
-        }
-        return nil
-    }
-
-    func nodify(guid: GUID) -> StructureNode {
-        guard let children = childrenForGUID(guid) else {
-            log.debug("No children for GUID \(guid).")
-            return RecordNode(guid: guid, overrides: overriding?.lookup[guid], deleted: false)
-        }
-
-        return BookmarkFolderNode(guid: guid, overrides: overriding?.lookup[guid], deleted: false, children: children.map(node))
-    }
-
-    func node(guid: GUID) -> StructureNode {
-        if let n = nodes[guid] {
-            return n
-        }
-
-        let n = nodify(guid)
-        nodes[guid] = n
-        return n
-    }
-
-    let topNodes = tops.flatMap { node($0) as? BookmarkFolderNode }
-    return topNodes.map { BookmarkTree(lookup: nodes, root: $0) }
-}
-
-struct BookmarkTree {
+public struct BookmarkTree {
     let lookup: [GUID: StructureNode]
     let root: BookmarkFolderNode
 }
