@@ -165,12 +165,15 @@ public class BrowserTable: Table {
             BookmarkRoots.UnfiledID, BookmarkRoots.UnfiledFolderGUID, type, BookmarkRoots.RootGUID, status, now,
         ]
 
-        let structureArgs: Args = [
-            BookmarkRoots.RootGUID, BookmarkRoots.MenuFolderGUID,    0,
-            BookmarkRoots.RootGUID, BookmarkRoots.ToolbarFolderGUID, 1,
-            BookmarkRoots.RootGUID, BookmarkRoots.UnfiledFolderGUID, 2,
-            BookmarkRoots.RootGUID, BookmarkRoots.MobileFolderGUID,  3,
-        ]
+        // Compute these args using the sequence in RootChildren, rather than hard-coding.
+        var idx = 0
+        var structureArgs = Args()
+        structureArgs.reserveCapacity(BookmarkRoots.RootChildren.count * 3)
+        BookmarkRoots.RootChildren.forEach { guid in
+            structureArgs.append(BookmarkRoots.RootGUID)
+            structureArgs.append(guid)
+            structureArgs.append(idx++)
+        }
 
         // Note that we specify an empty title and parentName for these records. We should
         // never need a parentName -- we don't use content-based reconciling or
@@ -179,19 +182,12 @@ public class BrowserTable: Table {
 
         let local =
         "INSERT INTO \(TableBookmarksLocal) " +
-        "(id, guid, type, parentid, title, parentName, sync_status, local_modified) VALUES" +
-        "  (?, ?, ?, ?, '', '', ?, ?)" +    // Root
-        ", (?, ?, ?, ?, '', '', ?, ?)" +    // Mobile
-        ", (?, ?, ?, ?, '', '', ?, ?)" +    // Menu
-        ", (?, ?, ?, ?, '', '', ?, ?)" +    // Toolbar
-        ", (?, ?, ?, ?, '', '', ?, ?)"      // Unsorted
+        "(id, guid, type, parentid, title, parentName, sync_status, local_modified) VALUES " +
+        Array(count: BookmarkRoots.RootChildren.count + 1, repeatedValue: "(?, ?, ?, ?, '', '', ?, ?)").joinWithSeparator(", ")
 
         let structure =
-        "INSERT INTO \(TableBookmarksLocalStructure) (parent, child, idx) VALUES" +
-        "  (?, ?, ?)" +      // Menu
-        ", (?, ?, ?)" +      // Toolbar
-        ", (?, ?, ?)" +      // Unsorted
-        ", (?, ?, ?)"        // Mobile
+        "INSERT INTO \(TableBookmarksLocalStructure) (parent, child, idx) VALUES " +
+        Array(count: BookmarkRoots.RootChildren.count, repeatedValue: "(?, ?, ?)").joinWithSeparator(", ")
 
         return self.run(db, queries: [(local, localArgs), (structure, structureArgs)])
     }
