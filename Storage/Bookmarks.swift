@@ -37,6 +37,14 @@ public struct BookmarkRoots {
 
     public static let FakeDesktopFolderGUID =  "desktop_____"   // Pseudo. Never mentioned in a real record.
 
+    // This is the order we use.
+    public static let RootChildren = [
+        BookmarkRoots.MenuFolderGUID,
+        BookmarkRoots.ToolbarFolderGUID,
+        BookmarkRoots.UnfiledFolderGUID,
+        BookmarkRoots.MobileFolderGUID,
+    ]
+
     public static let All = Set<GUID>([
         BookmarkRoots.RootGUID,
         BookmarkRoots.MobileFolderGUID,
