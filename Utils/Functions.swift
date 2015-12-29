@@ -102,15 +102,25 @@ public extension SequenceType {
     // [T] -> (T -> K) -> [K: [T]]
     // As opposed to `groupWith` (to follow Haskell's naming), which would be
     // [T] -> (T -> K) -> [[T]]
-    func groupBy<Key>(selector: Self.Generator.Element -> Key) -> [Key: [Self.Generator.Element]] {
-        var acc: [Key: [Self.Generator.Element]] = [:]
+    func groupBy<Key, Value>(selector: Self.Generator.Element -> Key, transformer: Self.Generator.Element -> Value) -> [Key: [Value]] {
+        var acc: [Key: [Value]] = [:]
         for x in self {
             let k = selector(x)
             var a = acc[k] ?? []
-            a.append(x)
+            a.append(transformer(x))
             acc[k] = a
         }
         return acc
+    }
+
+    func zip<S: SequenceType>(elems: S) -> [(Self.Generator.Element, S.Generator.Element)] {
+        var rights = elems.generate()
+        return self.flatMap { lhs in
+            guard let rhs = rights.next() else {
+                return nil
+            }
+            return (lhs, rhs)
+        }
     }
 }
 
