@@ -116,6 +116,7 @@ class TestSQLiteBookmarks: XCTestCase {
         self.remove("TSQLBtestBufferStorage.db")
         self.remove("TSQLBtestLocalAndMirror.db")
         self.remove("TSQLBtestRecursiveAndURLDelete.db")
+        self.remove("TSQLBtestTreeBuilding.db")
         super.tearDown()
     }
 
@@ -148,14 +149,7 @@ class TestSQLiteBookmarks: XCTestCase {
         XCTAssertTrue(bookmarks.hasDesktopBookmarks().value.successValue ?? true)
     }
 
-    func testRecursiveAndURLDelete() {
-        guard let db = getBrowserDB("TSQLBtestRecursiveAndURLDelete.db", files: self.files) else {
-            XCTFail("Unable to create browser DB.")
-            return
-        }
-
-        let bookmarks = SQLiteBookmarks(db: db)
-
+    private func createStockMirrorTree(db: BrowserDB) {
         // Set up a mirror tree.
         let mirrorQuery =
         "INSERT INTO \(TableBookmarksMirror) (guid, type, bmkUri, title, parentid, parentName, description, tags, keyword, is_overridden, server_modified, pos) " +
@@ -195,9 +189,11 @@ class TestSQLiteBookmarks: XCTestCase {
         "(?, ?, ?), " +
         "(?, ?, ?), " +
         "(?, ?, ?), " +
+        "(?, ?, ?), " +
         "(?, ?, ?) "
 
         let structureArgs: Args = [
+            BookmarkRoots.ToolbarFolderGUID, "folderAAAAAA", 0,
             BookmarkRoots.MenuFolderGUID, "folderBBBBBB", 0,
             "folderAAAAAA", "bookmark1001", 0,
             "folderAAAAAA", "separator101", 1,
@@ -213,6 +209,58 @@ class TestSQLiteBookmarks: XCTestCase {
             (sql: mirrorQuery, args: mirrorArgs),
             (sql: structureQuery, args: structureArgs),
         ]).succeeded()
+    }
+
+    private func isFolder(folder: BookmarkTreeNode, withGUID: GUID) {
+        switch folder {
+        case .Folder(let record):
+            XCTAssertEqual(withGUID, record.guid)
+        default:
+            XCTFail("Not a folder with GUID \(withGUID).")
+        }
+    }
+
+    private func areFolders(folders: [BookmarkTreeNode], withGUIDs: [GUID]) {
+        folders.zip(withGUIDs).forEach { (node, guid) in
+            self.isFolder(node, withGUID: guid)
+        }
+    }
+
+    func testTreeBuilding() {
+        guard let db = getBrowserDB("TSQLBtestTreeBuilding.db", files: self.files) else {
+            XCTFail("Unable to create browser DB.")
+            return
+        }
+
+        let bookmarks = SQLiteBookmarks(db: db)
+        self.createStockMirrorTree(db)
+
+        guard let tree = bookmarks.mirrorToTree().value.successValue else {
+            XCTFail("Couldn't get tree!")
+            return
+        }
+
+        // There's one root.
+        XCTAssertEqual(1, tree.roots.count)
+        switch (tree.roots[0]) {
+        case .Folder(let guid, let overridden, let children):
+            XCTAssertEqual("root________", guid)
+            XCTAssertFalse(overridden)
+            XCTAssertEqual(4, children.count)
+            self.areFolders(children, withGUIDs: BookmarkRoots.RootChildren)
+        default:
+            XCTFail("Root should be a folder.")
+        }
+    }
+
+    func testRecursiveAndURLDelete() {
+        guard let db = getBrowserDB("TSQLBtestRecursiveAndURLDelete.db", files: self.files) else {
+            XCTFail("Unable to create browser DB.")
+            return
+        }
+
+        let bookmarks = SQLiteBookmarks(db: db)
+        self.createStockMirrorTree(db)
 
         let menuOverridden = BookmarkRoots.MenuFolderGUID
         XCTAssertFalse(db.isOverridden(menuOverridden) ?? true)
