@@ -322,14 +322,15 @@ public class BrowserTable: Table {
 
     // TODO: phrase this without the subselect…
     private let bufferBookmarksStructureView =
+    // We don't need to exclude deleted parents, because we drop those from the structure
+    // table when we see them.
     "CREATE VIEW \(ViewBookmarksBufferStructureOnMirror) AS " +
     "SELECT parent, child, idx, 1 AS is_overridden FROM \(TableBookmarksBufferStructure) " +
-    "WHERE " +
-    "((SELECT is_deleted FROM \(TableBookmarksBuffer) WHERE guid = parent) IS NOT 1) " +
     "UNION ALL " +
+
+    // Exclude anything from the mirror that's present in the buffer -- dynamic is_overridden.
     "SELECT parent, child, idx, 0 AS is_overridden FROM \(TableBookmarksMirrorStructure) " +
-    "WHERE " +
-    "((SELECT 1 FROM \(TableBookmarksBuffer) WHERE guid = parent) IS NOT 1) "
+    "LEFT JOIN \(TableBookmarksBuffer) ON parent = guid WHERE guid IS NULL"
 
     private let localBookmarksView =
     "CREATE VIEW \(ViewBookmarksLocalOnMirror) AS " +
