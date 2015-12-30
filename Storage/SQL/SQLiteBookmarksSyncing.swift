@@ -569,10 +569,13 @@ private let allBufferStructuresReferToRecords =
 "\(ViewBookmarksBufferStructureOnMirror) s LEFT JOIN \(ViewBookmarksBufferOnMirror) b " +
 "ON b.guid = s.child WHERE b.guid IS NULL"
 
-private let allBufferRecordsAreInStructure =
+private let allNonDeletedBufferRecordsAreInStructure =
 "SELECT b.guid AS missing, b.parentid AS parent FROM " +
 "\(ViewBookmarksBufferOnMirror) b LEFT JOIN \(ViewBookmarksBufferStructureOnMirror) s " +
-"ON b.guid = s.child WHERE s.child IS NULL AND b.parentid IS NOT \(BookmarkRoots.RootGUID)"
+"ON b.guid = s.child " +
+"WHERE s.child IS NULL AND " +
+"b.is_deleted IS 0 AND" +
+"b.parentid IS NOT \(BookmarkRoots.RootGUID)"
 
 private let allRecordsAreChildrenOnce =
 "SELECT s.child FROM \(ViewBookmarksBufferStructureOnMirror) s " +
@@ -580,6 +583,12 @@ private let allRecordsAreChildrenOnce =
 "SELECT child, COUNT(*) AS dupes FROM \(ViewBookmarksBufferStructureOnMirror) " +
 "GROUP BY child HAVING dupes > 1" +
 ") i ON s.child = i.child"
+
+private let bufferParentidMatchesStructure =
+"SELECT b.guid, b.parentid, s.parent, s.child, s.idx FROM " +
+"\(TableBookmarksBuffer) b JOIN \(TableBookmarksBufferStructure) s " +
+"ON b.guid = s.child " +
+"WHERE b.parentid IS NOT s.parent"
 
 extension SQLiteBookmarkBufferStorage {
     public func validate() -> Success {
@@ -595,8 +604,9 @@ extension SQLiteBookmarkBufferStorage {
 
         return [
             (allBufferStructuresReferToRecords, "Not all buffer structures refer to records. Buffer is inconsistent."),
-            (allBufferRecordsAreInStructure, "Not all buffer records are in structure. Buffer is inconsistent."),
+            (allNonDeletedBufferRecordsAreInStructure, "Not all buffer records are in structure. Buffer is inconsistent."),
             (allRecordsAreChildrenOnce, "Some buffer structures refer to the same records. Buffer is inconsistent."),
+            (bufferParentidMatchesStructure, "Some buffer records don't match structure. Buffer is inconsistent."),
         ].map { (query, message) in
             return self.db.queryReturnsNoResults(query) >>== yup(message)
         }.allSucceed()
